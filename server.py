@@ -21,21 +21,30 @@ class ServerClass(object):
         sock.listen(5)
         while True:
             connection,address=sock.accept()
-            try:
-                connection.settimeout(5)
+            # try:
+            if True:
+                # connection.settimeout(5)
+                # print('connect')
                 buf=json.loads(connection.recv(2048).decode())
-                print(buf)
-                if buf[type]=='pull':
+                # print('server')
+                # print(buf)
+                if buf['type']=='pull':
                     #后期追加根据buf里面的feature_id获取dict_w里面的相关参数
                     json_string = json.dumps(self.dict_w)
+                    # print("send weight:%s" %json_string)
                     connection.send(json_string.encode())
                 else:
-                    for id in self.dict_w.keys():
+                    for id in buf.keys():
                         if(id=='type'):
                             continue
-                        self.dict_w[id]-=self.alpha*buf[id]
-            except:
+
+                        self.dict_w[int(id)]-=self.alpha*buf[id]
+                        # print('update weight: %s' %self.dict_w)
+            # except:
+            else:
                 print('error')
 
 
-# if __name__ == '__main__':ServerClass.process()
+if __name__ == '__main__':
+    serve=ServerClass(0.001,[0,1,2])
+    serve.process()
