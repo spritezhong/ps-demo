@@ -54,3 +54,42 @@ class PWorkerClass(SingleClass):
 		# self.send(ip, port, msg)
 		self.send('localhost',8001,msg) #需要根据参数的id，查找对应server的id，发送消息
 
+	def pull(self,dict_w):
+		pass
+		# server_num=1 #getnum(ServerGroup)与之通信的服务器组内的服务器数量
+		# #需要进一步完善。。。。。。。。。。。。。
+		# msg = message.Meta()
+		# msg.body=json.dumps(dict_w)
+		# msg.timestamp=server_num
+		# # self.send(ip, port, msg)
+		# self.send('localhost',8001,msg) #需要根据参数的id，查找对应server的id，发送消息
+class PServerClass(SingleClass):
+	def __init__(self,id,ip,port,role,data):
+		super(PServerClass, self).__init__(id,ip,port,role)
+		self.data=data                    #存放参数值
+	def process(self,msg):
+		#本地复制下信息
+		lmeta=message.Meta()
+		lmeta.rcmd=msg.rcmd
+		lmeta.body=msg.body
+		lmeta.timestamp=msg.timestamp
+		lmeta.connectid=msg.connectid
+		#这里应该等待含有改段参数梯度值的worker全部发送数据过来
+
+		##########################
+		grad=json.loads(lmeta.body.decode()) #后续需要改进
+		for id in grad.keys():
+			if id in self.data.keys():
+				self.data[id]-=grad[id]
+
+	def response(self,request_msg,return_vals):
+		lmeta=message.Meta()
+		lmeta.rcmd=request_msg.rcmd
+		lmeta.timestamp=request_msg.timestamp
+		lmeta.body=return_vals
+		#################待完善#############
+		#需要添加一个根据节点id查询节点<ip,port>的函数
+		self.send(ip,port,lmeta) #根据request_msg中的节点id，查询节点相应的<ip,port>回复消息
+
+
+
