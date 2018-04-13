@@ -3,7 +3,7 @@ import message_pb2 as message
 import socket
 import json
 class SingleClass(object):
-	def __init__(self,id,ip,port,role):
+	def __init__(self,id,ip,port,role,handle):
 		#初始化自己节点信息,后续应该改为直接从配置文件读取
 		self.node=message.Node()
 		self.node.id=id
@@ -13,6 +13,10 @@ class SingleClass(object):
 		self.req_node=message.rcmd()
 		self.req_node.reg_node=self.node
 		self.list_node={} #存放id通讯列表
+		self.handle=handle  #增加回调函数handle，对于worker来说，执行PWorker.process(),对于server来说执行PServer.process()
+		#启动线程
+
+	def process(self,msg):     # PServer与PWorker具体实现此函数
 		pass
 	def send(self,ip,port,msg): #msg发送到<ip,port>
 		sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -44,15 +48,28 @@ class SingleClass(object):
 class PWorkerClass(SingleClass):
 	def __init__(self,id,ip,port,role):
 		super(PWorkerClass, self).__init__(id,ip,port,role)
-
-	def push(self,dict_grad):
+		self.dict_callback={}         #<timestamp,callback>
+	def add_callback(self,timeatamp,callback):
+		#这里需要互斥访问self.dict_callback，后期需要引入锁的机制
+		self.dict_callback[timeatamp]=callback
+	def run_callback(self,timestamp):
+		if timestamp not in self.dict_callback.keys():
+			return
+		#这里应该保证操作互斥，后期加锁
+		self.dict_callback[timestamp]         #执行回调函数
+		del self.dict_callback[timestamp]     #从列表删除
+	def push(self,dict_grad,callback): #callback是消息被服务器接受后执行的函数
 		server_num=1 #getnum(ServerGroup)与之通信的服务器组内的服务器数量
 		#需要进一步完善。。。。。。。。。。。。。
 		msg = message.Meta()
 		msg.body=json.dumps(dict_grad)
 		msg.timestamp=server_num
+		self.add_callback(msg.timestamp,callback)
 		# self.send(ip, port, msg)
 		self.send('localhost',8001,msg) #需要根据参数的id，查找对应server的id，发送消息
+	def process(self,msg):
+		#存储数据完成后执行callback
+		#所有的服务器都发来数据后，执行self.run_callback()
 
 	def pull(self,dict_w):
 		pass
@@ -63,11 +80,21 @@ class PWorkerClass(SingleClass):
 		# msg.timestamp=server_num
 		# # self.send(ip, port, msg)
 		# self.send('localhost',8001,msg) #需要根据参数的id，查找对应server的id，发送消息
+	def wait(self,timestamp):
+		#等待所有请求返回
+		pass
 class PServerClass(SingleClass):
 	def __init__(self,id,ip,port,role,data):
 		super(PServerClass, self).__init__(id,ip,port,role)
-		self.data=data                    #存放参数值
-	def process(self,msg):
+		self.data=data     #存放参数值
+
+
+
+	def self_handle(self,handle):     #def handle(msg,server)
+		self.handle=handle
+
+
+	def __process(self,msg):
 		#本地复制下信息
 		lmeta=message.Meta()
 		lmeta.rcmd=msg.rcmd
