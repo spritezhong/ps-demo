@@ -1,20 +1,24 @@
 message Node {
         required int32 id=4;
+        required int32 client_id=5;
         required int32 port=8001;
         required string ip=3;
         required string role=2;
         optional bool is_recover=1;
 }
 
-message Requestcmd {
-        required int32 cmd=1;
+message Control {
+        required string command=1;
         required Node reg_node=2;
 }
 message Meta {
         optional int32 head=1;
         optional bytes body=2;
-        optional Requestcmd rcmd=3;
+        optional Control control=3;
         optional int32 timestamp=4;
-        optional int32 connectid=5;
+        optional int32 sender_id=5;
+        optional int32 recv_id=6;
+        optional bool request=7;
+
 
 }
