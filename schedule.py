@@ -5,7 +5,7 @@ import message_pb2 as message
 import socket
 import json
 class ScheduleClass(object):
-	def __init__(self,workcount):
+	def __init__(self,workcount,is_schedule):
 		self.state=0                    #启动状态，初始0，表示先启动schedule节点
 		self.schedule_node=message.Node()
 		self.current_node=message.Node()
@@ -15,6 +15,7 @@ class ScheduleClass(object):
 		# self.__dict_results={}                  #存放每个worker的执行结果
 		# self.list_node=[]                       #存放所有注册节点的信息。
 		self.workcount=workcount
+		self.is_schedule=is_schedule
 
 		#从配置文件读取节点信息
 	def start(self,client_id):
@@ -27,21 +28,43 @@ class ScheduleClass(object):
 			self.schedule_node.role='schedule'
 			cmap={self.schedule_node.ip:self.schedule_node.port}
 			self.connect_ids[self.schedule_node.id]=cmap    #增加schedule节点信息
-			self.recieve_thread=threading.Thread(self.recieving)
+			self.recieve_thread=threading.Thread(target=self.recieving)
+			self.recieve_thread.start()
+
 			self.state+=1
+		if self.is_schedule==False:
+			self.current_node.id=2
+			self.current_node.ip='local host'
+			self.current_node.port=8001
+			msg=message.Meta()
+			msg.control.command='add node'
+			msg.control.reg_node.id=self.current_node.id
+			msg.control.reg_node.ip=self.current_node.ip
+			msg.control.reg_node.port= self.current_node.port
+			sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+			sock.connect(('localhost', 8002)) #这个地址目前是默认已知的
+			print('msg:%s'%msg)
+			sock.send(msg.SerializePartialToString())
+			sock.close()
 		#待定：判断当前节点是否为schedule节点，如果不是则向schedule节点发送自身节点消息。
 	def stop(self):
 		self.recieve_thread.join()
 
 
 	def recieving(self):
+		print('recieving')
 		sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 		sock.bind(('localhost', 8002))
 		workcount=0
 		list_conn=[]
+		sock.listen()
 		while True:
 			connection, address = sock.accept()
-			buf = json.loads(connection.recv(2048).decode())  # 收到来自schedule的table_node
+			buf=message.Meta()
+			info=connection.recv(2048)
+			buf.ParseFromString(info)
+			# buf = json.loads(connection.recv(2048).decode())  # 收到来自schedule的table_node
+			# print('buf:%s' %buf)
 			if buf.control.command=='add node':            #代表是注册信息
 				workcount+=1
 				list_conn.append(connection)
@@ -52,11 +75,29 @@ class ScheduleClass(object):
 			if workcount==self.workcount:  #注册的work已满足要求
 				break
 		msg=message.Meta()                  #把tabel_node广播给连入的所有节点
-		msg.control.command=='tell node'
-		msg.body=json.dumps(self.connect_ids)
-		for con in list_conn:
-			con.send(msg.encode())
-			con.close()
+		msg.control.command='tell node'
+		msg.body=json.dumps(self.connect_ids).encode()
+		# msg.body=json.dumps(self.connect_ids)
+		print("send to worker")
+		self.sendtoall(msg)
+		# for con in list_conn:
+		# 	con.send(msg.SerializePartialToString())
+		# 	con.close()
+
+	def sendtoall(self,msg):
+
+		for key in self.connect_ids.keys():
+			if key==4:continue
+			sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+			ip=list(self.connect_ids[key].keys())[0]
+			port=self.connect_ids[key][ip]
+			address=(ip,port)
+			print('send to all')
+			print(address)
+			sock.connect(address)
+			sock.send(msg.SerializePartialToString())
+			sock.close()
+
 
 	#
 	# def get_ready(self,ready):
