@@ -27,16 +27,17 @@ class SingleClass(object):
 	def register(self):
 		msg = message.Meta()
 		msg.control.command = 'add node'
-		msg.control.reg_node.id = self.node.id
+		# msg.control.reg_node.id = self.node.id
 		msg.control.reg_node.ip = self.node.ip
 		msg.control.reg_node.port = self.node.port
+		msg.control.reg_node.role=self.node.role
 		# msg.sender_id=self.node.id
 		# msg.recv_id=4
 		sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 		sock.connect(('localhost', 8002))  # 这个地址目前是默认已知的
 		sock.send(msg.SerializePartialToString())
 		sock.close()
-		# print('register')
+		print('register')
 	def receiving(self):
 		sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 		sock.bind((self.node.ip,self.node.port))
@@ -92,8 +93,8 @@ class SingleClass(object):
 	def stop(self):
 		lmeta=message.Meta()
 		lmeta.control.command='exit'
-		lmeta.recv_id=2
-		lmeta.sender_id=2
+		lmeta.recv_id=9
+		lmeta.sender_id=9
 		sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 		sock.connect((self.node.ip, self.node.port))
 		sock.send(lmeta.SerializePartialToString())
@@ -152,7 +153,7 @@ class PWorkerClass(SingleClass):
 		msg.timestamp = ts
 		self.add_callback(msg.timestamp,callback)
 		# self.send(ip, port, msg)
-		msg.recv_id=1#暂不考虑根据key值，查找对应机器的id
+		msg.recv_id=8#暂不考虑根据key值，查找对应机器的id
 		self.send(msg) #需要根据参数的id，查找对应server的id，发送消息
 		return ts
 	def update(self,data,ts):
@@ -169,7 +170,7 @@ class PWorkerClass(SingleClass):
 		msg.request = True
 		msg.push=False
 		msg.sender_id = self.node.id
-		msg.recv_id =1  # 暂不考虑根据key值，查找对应机器的id
+		msg.recv_id =8  # 暂不考虑根据key值，查找对应机器的id
 
 		self.add_callback(msg.timestamp,self.update)
 		self.add_callarg(msg.timestamp,dict_w,msg.timestamp)
