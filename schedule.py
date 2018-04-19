@@ -73,7 +73,7 @@ class ScheduleClass(object):
 		sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 		sock.bind(('localhost', 8002))
 		workcount=0
-		list_conn=[]
+
 		sock.listen()
 		while True:
 			connection, address = sock.accept()
@@ -85,7 +85,6 @@ class ScheduleClass(object):
 			time_add=time.time()
 			if buf.control.command=='add node':            #代表是注册信息
 				workcount+=1
-				list_conn.append(connection)
 				reg_node=buf.control.reg_node
 				cmap={reg_node.ip:reg_node.port}
 				conflict_flag=False
@@ -105,19 +104,24 @@ class ScheduleClass(object):
 
 				#更新节点的活跃时间
 				self.update_heart(reg_node.id,time.time())
+				if (self.num_servers + self.num_workers)==self.workcount:  # 注册的work已满足要求
+					msg = message.Meta()  # 把tabel_node广播给连入的所有节点
+					msg.control.command = 'tell node'
+					msg.body = json.dumps(self.connect_ids).encode()
+					# msg.body=json.dumps(self.connect_ids)
+					print("send to worker")
+					self.sendtoall(msg)
+			elif buf.control.command=='heart':
+				self.update_heart(buf.control.reg_node.id, time.time())
 
 
-			if (self.num_servers+self.num_workers)==self.workcount:  #注册的work已满足要求
-				break
+
+				# break
+			 #如果有复活节点存在，把复活节点告知给其它节点
 			# wait_time=time.time()     #如果一段时间内注册节点的数量都不满足要求，则认为有节点已经死亡
 			# if wait_time-time_add>internal:
 			# 	dropdeadnode
-		msg=message.Meta()                  #把tabel_node广播给连入的所有节点
-		msg.control.command='tell node'
-		msg.body=json.dumps(self.connect_ids).encode()
-		# msg.body=json.dumps(self.connect_ids)
-		print("send to worker")
-		self.sendtoall(msg)
+
 		# for con in list_conn:
 		# 	con.send(msg.SerializePartialToString())
 		# 	con.close()
