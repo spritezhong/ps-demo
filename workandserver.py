@@ -75,7 +75,9 @@ class PWorkerClass(SingleClass):
 		self.add_callback(msg.timestamp,self.update)
 		self.add_callarg(msg.timestamp,dict_w,msg.timestamp)
 		#增加回调函数，一旦获得服务器回复，更新dict_w
+		# print('pull')
 		self.send(msg)  # 需要根据参数的id，查找对应server的id，发送消息
+
 		return ts
 
 	def printval(self):

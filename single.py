@@ -15,15 +15,16 @@ class SingleClass(object):
 		self.node.client_id=client_id
 		self.connect_ids={}
 		self.servernum=servernum
-		# self.sendnum=[]            #某时间戳内发送的消息数
-		# self.recnum=[]              #某时间戳内接受的消息数
 		self.tracker=[]            #每个元素为[sendnum,recnum]
 		self.handle=handle  #增加回调函数handle，对于worker来说，执行PWorker.process(),对于server来说执行PServer.process()
 		# self.ready=False
 		self.recieve_thread = threading.Thread(target=self.receiving)
 		self.recieve_thread.start()
 		#启动线程监听消息
+
 		self.ready = False
+		self.heart_thread = threading.Thread(target=self.heartbeat(120))
+		self.heart_thread.start()
 		self.sendtime=0
 
 
@@ -51,23 +52,24 @@ class SingleClass(object):
 			connection, address = sock.accept()
 			buf=message.Meta()
 			buf.ParseFromString(connection.recv(2048))
-			# print('has recieve：%s'%buf)
+			# if self.node.role=='server':
+			# 	print('has recieve：%s'%buf)
 			# buf = json.loads(connection.recv(2048).decode()) #收到来自schedule的table_node
 			if buf.control.command=='tell node':
 				self.connect_ids=json.loads(buf.body.decode())
 				self.ready=True
-				heart_thread=threading.Thread(target=self.heartbeat(5))
-				heart_thread.start()
+				# if self.node.role=='worker':
+					# heart_thread=threading.Thread(target=self.heartbeat(120))
+				# heart_thread.start()
 			elif buf.control.command=='exit':
+				self.ready=False
+				print('node:%d exit'%self.node.id)
 				break
-				# id=buf.control.reg_node.id
-				# ip=buf.control.reg_node.ip
-				# port=buf.control.reg_node.port
-				# print('ip:%s'%ip)
-				# self.connect_ids[id]={ip:port}
 			else:
 				self.handle(buf)            #处理接收到的消息
 				if buf.request==False:    # 记录当前时间戳有一个消息得到回复
+					# print('recieve buf')
+					# print(buf)
 					ts=buf.timestamp
 					self.tracker[ts][1]+=1
 					# self.recnum[ts]+=1
@@ -78,16 +80,24 @@ class SingleClass(object):
 			msg=message.Meta()
 			msg.control.command='heart'
 			msg.recv_id=1
-			msg.control.reg_node=self.node
+			self.copynode(msg.control.reg_node,self.node)
+			# msg.control.reg_node=self.node
 			msg.timestamp=self.sendtime
 			self.sendtime+=1
 			self.send(msg)
+	def copynode(self,desnode,srcnode):
+		desnode.id=srcnode.id
+		desnode.ip=srcnode.ip
+		desnode.port=srcnode.port
+		desnode.is_recover=srcnode.is_recover
+		desnode.role=srcnode.role
 
 
 	def send(self,msg):             #这里发送消息在已知table_node后根据id查表的
 		while(self.ready==False):
-			#这里应该wait
 			a=1
+		print('sssssss')
+			# time.sleep(1)
 		# ts=msg.timestamp
 		recv_id=msg.recv_id
 
@@ -102,6 +112,9 @@ class SingleClass(object):
 		sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 		sock.connect((sock_ip,sock_port))
 		# info=json.loads(json_string)
+		print(sock_ip,sock_port)
+		print(msg)
+		print(self.node.id)
 		sock.send(msg.SerializePartialToString())
 		sock.close()
 
@@ -115,6 +128,7 @@ class SingleClass(object):
 		sock.send(lmeta.SerializePartialToString())
 		sock.close()
 		self.recieve_thread.join()
+		self.heart_thread.join()
 
 
 
