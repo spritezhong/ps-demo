@@ -1,11 +1,14 @@
 import socket
-import math
 import numpy as np
 import json
 from sklearn.cross_validation import train_test_split
+import logging
+import logging.config
+
+from queue import Queue
 
 class WorkerClass(object):
-    def __init__(self,list_id): #v表示向量的维度
+    def __init__(self,list_id,fuc,num): #v表示向量的维度
         self.X=[]
         self.Y=[]
         self.X_test=[]
@@ -13,11 +16,25 @@ class WorkerClass(object):
         self.dict_v={}
         self.dict_grad={}
         self.dict_info={}
+        # self.__work_queue=Queue.Queue()
+        self.__works={}
+        self.__dict_result={}
         for i in list_id:
             self.dict_info[i]=0
         self.dict_info['type']='pull'
-
-
+        self.handle=fuc
+        self.param=num
+    def H(self):
+        self.handle(2)
+    def set_workqueue(self,workqueue):
+        self.__work_queue=workqueue
+    def set_result(self,result):
+        self.__dict_result=result
+    def run(self):             #worker端工作流程
+        while(True):
+            if self.__work_queue.empty(): break
+            task=self.__work_queue.get()
+            #handle(task)             #task需要定义
     def read_data(self,filepath):
         dataMat=[];labelMat=[]
         fr=open(filepath)
@@ -102,4 +119,28 @@ class WorkerClass(object):
         # print(sum(s))
         # print(type(s))
         # error = s - self.Y
+list_function={}
+# list_arg={}
+def func(num):
+    num+=1
+    print('hello')
+    print(num)
+def addcallback(ts,function):
+    list_function[ts]=function
+    # list_arg[ts]=arg
+
+if __name__=='__main__':
+    a=1
+    print('a',a)
+    log_filename = "logging.log"
+    logging.basicConfig(level=logging.DEBUG,
+                        format='[%(asctime)s] %(levelname)s [%(funcName)s: %(filename)s, %(lineno)d] %(message)s',
+                        datefmt='%Y-%m-%d %H:%M:%S',
+                        filemode='a')
+    if a==1:
+        logging.error('erroe')
+    # addcallback(0,func,)
+    # list_function[0](list_arg[0])
+    # work=WorkerClass([0,1,2],{print('hello')})
+    # work.H()
 
