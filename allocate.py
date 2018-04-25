@@ -6,6 +6,9 @@ def get_serverkeyranges(num_servers):
 		start=config.Max_Key/num_servers*i
 		end=config.Max_Key/num_servers*(i+1)
 		server_range.append([start,end])
+	print('range: %d' %num_servers)
+	print(server_range)
+
 	return server_range
 
 def getslicer(kv_list,range_list): #返回结果形式['flag',[key_list,val_list]]
