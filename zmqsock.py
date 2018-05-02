@@ -1,5 +1,6 @@
 import zmq
 import logging
+import message_pb2 as message
 class ZMQSOCK:
 	def __init__(self):
 		self.senders={}
@@ -11,8 +12,7 @@ class ZMQSOCK:
 
 	def bind(self,node):
 		self.receiver=self.context.socket(zmq.ROUTER)
-		# ip=node.ip
-		addr="tcp://"+node.ip+":"+node.port
+		addr="tcp://"+node.ip+":"+str(node.port)
 		if(self.receiver.bind(addr)!=None):
 			logging.error("bind port error")
 
@@ -23,8 +23,10 @@ class ZMQSOCK:
 		if(node.role==mynode.role and node.id!=mynode.id):
 			return
 		sender=self.context.socket(zmq.DEALER)
-		sender.setsockopt(zmq.IDENTITY,mynode.id,len(mynode.id))
-		addr= "tcp://" + node.ip + ":" + node.port
+		# if mynode.id!=-1:
+		# 	sender.setsockopt(zmq.IDENTITY,str(mynode.id).encode())
+		addr= "tcp://" + node.ip + ":" + str(node.port)
+		# print('my node connect addr',mynode.role,mynode.id,addr)
 		if sender.connect(addr)!=None:
 			logging.error("connect node error")
 		self.senders[id]=sender
@@ -33,14 +35,23 @@ class ZMQSOCK:
 		id=int(msg.recv_id)
 		if id not in self.senders.keys():
 			logging.error('cannot find sender')
-			print('sender id is:',id)
+			# print('revv id is:',id)
 		sock=self.senders[id]
-		sock.send_string(msg)
+		# print('recv id is :',str(id))
+		# sock.send_multipart([str(id).encode(), msg.SerializePartialToString()])
+		sock.send(msg.SerializePartialToString())
+		# print('sender',msg.SerializePartialToString())
 
 	def recvmsg(self):
-		msg=self.receiver.recv()
-		print("receive messge is",msg)
-		return msg
+		# print('zmqsock recvmsg')
+		for i in range(1):
+			self.receiver.recv()
+		buf= message.Meta()
+
+		# print('recvmsg',self.receiver.recv())
+		buf.ParseFromString(self.receiver.recv())
+		# print("receive messge is",buf)
+		return buf
 
 
 

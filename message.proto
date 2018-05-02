@@ -7,6 +7,9 @@ message Node {
         required string role=2;
         optional bool is_recover=1;
 }
+message NodeList {
+        repeated Node nodel=1;
+}
 
 message Control {
         required string command=1;

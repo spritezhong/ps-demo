@@ -5,6 +5,8 @@ import allocate
 import config
 from single import CallBack
 import logging
+
+
 class PWorkerClass(SingleClass):
 	def __init__(self,id,ip,port,role,client_id,servernum):
 		super(PWorkerClass, self).__init__(id,ip,port,role,client_id,servernum,self.process)
@@ -17,10 +19,6 @@ class PWorkerClass(SingleClass):
 			if ts not in self.dict_kv.keys():
 				self.dict_kv[ts]=[]
 			self.dict_kv[ts].append(json.loads(msg.body.decode()))
-			# print('worker process timestamp:%d'%ts)
-			# print(self.tracker[ts][1])
-			# print('dict-kv')
-			# print(self.dict_kv[ts])
 			if self.tracker[ts][1]==self.servernum-1: #这里应该是等于服务器的数量-1因为当前回复的服务器未计算在内
 				self.run_callback(ts)     #全部返回，执行回调函数
 			self.printval()
@@ -28,8 +26,6 @@ class PWorkerClass(SingleClass):
 	def add_callback(self,timestamp,callback):
 		#这里需要互斥访问self.dict_callback，后期需要引入锁的机制
 		self.dict_callback[timestamp]=callback
-	# def add_callarg(self,timestamp,*arg):  #现在回调函数和参数是分开存的，咋存一起呢？
-	# 	self.dict_arg[timestamp]=arg
 
 	def run_callback(self,timestamp):
 		# print('run call back')
@@ -37,13 +33,6 @@ class PWorkerClass(SingleClass):
 			return
 		cb=self.dict_callback[timestamp]
 		cb.run()
-		#这里应该保证操作互斥，后期加锁
-		# if timestamp not in self.dict_arg.keys():
-		# 	self.dict_callback[timestamp]
-		# else:
-		# 	self.dict_callback[timestamp](self.dict_arg[timestamp][0],self.dict_arg[timestamp][1])         #执行回调函数
-		# 	del self.dict_arg[timestamp]
-		# print("已经执行回调函数")
 		del self.dict_callback[timestamp]     #从列表删除
 
 	def push(self,key_list,val_list,callback):
@@ -153,7 +142,6 @@ class PWorkerClass(SingleClass):
 				continue
 			msg=message.Meta()
 			msg.sender_id=self.node.id
-			print('send_id :%d' %msg.sender_id)
 			msg.recv_id=config.serverranktoID(i)
 			msg.body=json.dumps(slicer[i][1]).encode()
 			msg.push=push
@@ -165,8 +153,7 @@ class PWorkerClass(SingleClass):
 
 
 	def printval(self):
-		print('check weight')
-		print(self.dict_kv)
+		print('check weight',self.dict_kv)
 
 
 	def wait(self,timestamp):
@@ -176,11 +163,12 @@ class PWorkerClass(SingleClass):
 
 
 class PServerClass(SingleClass):
-	def __init__(self,id,ip,port,role,client_id,servernum,data):
+	def __init__(self,id,ip,port,role,client_id,servernum,data,):
 		super(PServerClass, self).__init__(id,ip,port,role,client_id,servernum,self.process)
 		self.data=data     #存放参数值<key,value>形式
 		# self.handle=handle
-
+	def sethandle(self,handle):
+		pass
 	def process(self,msg):
 		#本地复制下信息
 		lmeta=message.Meta()
@@ -191,6 +179,7 @@ class PServerClass(SingleClass):
 		lmeta.request=msg.request
 		lmeta.push=msg.push
 		self.response(lmeta)
+		# self.handle(lmeta)
 		#这里应该等待含有改段参数梯度值的worker全部发送数据过来
 		# if lmeta.request==False:     #表示传来的是push请求
 		# 	grad =json.loads(lmeta.body.decode())  # 后续需要改进
@@ -229,7 +218,6 @@ class PServerClass(SingleClass):
 			re_keys=[]
 			re_kvlist=[]
 			kv_list = json.loads(lmeta.body.decode())
-			print('kvlist:%s'%kv_list)
 			for i in range(len(kv_list[0])):
 				if int(kv_list[0][i]) not in self.data.keys():
 					logging.error('cannot find key in server')
@@ -238,6 +226,6 @@ class PServerClass(SingleClass):
 			re_kvlist.append(re_keys)
 			re_kvlist.append(re_vals)
 			lmeta.body=json.dumps(re_kvlist).encode()
-		print('recv_id：%d' %lmeta.recv_id)
+		# print('recv_id：%d' %lmeta.recv_id)
 		self.send(lmeta) #根据request_msg中的节点id，查询节点相应的<ip,port>回复消息
 

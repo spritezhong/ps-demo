@@ -1,14 +1,22 @@
 #worker与server的基类
 import message_pb2 as message
 import socket
-import json
 import threading
 import time
+from zmqsock import ZMQSOCK
+class CallBack:
+    def __init__(self,fun,*arg):
+        self.arg=arg
+        self.fun=fun
+
+
+    def run(self):
+        self.fun(self.arg)
 class SingleClass(object):
-	def __init__(self,id,ip,port,role,client_id,servernum,handle):
+	def __init__(self,rank,ip,port,role,client_id,servernum,handle):
 		#初始化自己节点信息,后续应该改为直接从配置文件读取
 		self.node=message.Node()
-		self.node.id=id
+		self.node.rank=rank
 		self.node.ip=ip
 		self.node.port=port
 		self.node.role=role
@@ -18,8 +26,9 @@ class SingleClass(object):
 		self.tracker=[]            #每个元素为[sendnum,recnum]
 		self.handle=handle  #增加回调函数handle，对于worker来说，执行PWorker.process(),对于server来说执行PServer.process()
 		# self.ready=False
-		self.recieve_thread = threading.Thread(target=self.receiving)
-		self.recieve_thread.start()
+		self.zmqs = ZMQSOCK()
+		self.zmqs.start()
+
 		#启动线程监听消息
 
 		self.ready = False
@@ -28,48 +37,52 @@ class SingleClass(object):
 		self.sendtime=0
 
 
+
 	def register(self):
+		self.zmqs.bind(self.node)
+		print('role:%s register'% self.node.role)
 		msg = message.Meta()
+		schedule_node=message.Node()
+		schedule_node.id=1
+		schedule_node.ip='127.0.0.1'
+		schedule_node.port=8002
+		self.zmqs.connect(schedule_node,self.node)
 		msg.control.command = 'add node'
-		# msg.control.reg_node.id = self.node.id
 		msg.control.reg_node.ip = self.node.ip
 		msg.control.reg_node.port = self.node.port
 		msg.control.reg_node.role=self.node.role
 		msg.timestamp=self.sendtime
 		self.sendtime += 1
-		sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-		sock.connect(('localhost', 8002))  # 这个地址目前是默认已知的
-		sock.send(msg.SerializePartialToString())
-		sock.close()
-		print('register')
+		msg.recv_id=schedule_node.id
+		self.zmqs.sendmsg(msg)
+		self.recieve_thread = threading.Thread(target=self.receiving)
+		self.recieve_thread.start()
+
+	def waitready(self):
+		while(self.ready==False):
+			pass
 	def receiving(self):
-		sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-		sock.bind((self.node.ip,self.node.port))
-		# sock.bind(('localhost', 8001))
-		sock.listen()
 		while True:
-			# print('ddddddd')
-			connection, address = sock.accept()
-			buf=message.Meta()
-			buf.ParseFromString(connection.recv(2048))
-			# if self.node.role=='server':
-			# 	print('has recieve：%s'%buf)
-			# buf = json.loads(connection.recv(2048).decode()) #收到来自schedule的table_node
-			if buf.control.command=='tell node':
-				self.connect_ids=json.loads(buf.body.decode())
+			buf=self.zmqs.recvmsg()
+			if	buf.control.command=='tell node':
+				nodelists=message.NodeList()
+				nodelists.ParseFromString(buf.body)
+				for node in nodelists.nodel:
+					if node.ip==self.node.ip and node.port==self.node.port:
+						self.node.id=node.id
+						break
+				for node in nodelists.nodel:
+					self.zmqs.connect(node,self.node)
 				self.ready=True
-				# if self.node.role=='worker':
-					# heart_thread=threading.Thread(target=self.heartbeat(120))
-				# heart_thread.start()
+
+				# pass
+
 			elif buf.control.command=='exit':
 				self.ready=False
-				print('node:%d exit'%self.node.id)
 				break
 			else:
 				self.handle(buf)            #处理接收到的消息
 				if buf.request==False:    # 记录当前时间戳有一个消息得到回复
-					# print('recieve buf')
-					# print(buf)
 					ts=buf.timestamp
 					self.tracker[ts][1]+=1
 					# self.recnum[ts]+=1
@@ -81,10 +94,10 @@ class SingleClass(object):
 			msg.control.command='heart'
 			msg.recv_id=1
 			self.copynode(msg.control.reg_node,self.node)
-			# msg.control.reg_node=self.node
 			msg.timestamp=self.sendtime
 			self.sendtime+=1
 			self.send(msg)
+			# self.send(msg)
 	def copynode(self,desnode,srcnode):
 		desnode.id=srcnode.id
 		desnode.ip=srcnode.ip
@@ -92,31 +105,30 @@ class SingleClass(object):
 		desnode.is_recover=srcnode.is_recover
 		desnode.role=srcnode.role
 
-
-	def send(self,msg):             #这里发送消息在已知table_node后根据id查表的
+	def send(self,msg):
 		while(self.ready==False):
 			a=1
-		print('sssssss')
+		self.zmqs.sendmsg(msg)
+
+	'''
+		def send(self,msg):             #这里发送消息在已知table_node后根据id查表的
+		while(self.ready==False):
+			a=1
+		print('send')
 			# time.sleep(1)
 		# ts=msg.timestamp
 		recv_id=msg.recv_id
-
-		# sender_id=msg.sender_id
-		# print('node tables')
-		# print(self.connect_ids)
 		sock_sender=self.connect_ids[str(recv_id)]
-		# print('sock sender')
-		# print(sock_sender)
 		sock_ip=list(sock_sender.keys())[0]
 		sock_port=sock_sender[sock_ip]
 		sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 		sock.connect((sock_ip,sock_port))
 		# info=json.loads(json_string)
-		print(sock_ip,sock_port)
-		print(msg)
-		print(self.node.id)
 		sock.send(msg.SerializePartialToString())
 		sock.close()
+	'''
+
+
 
 	def stop(self):
 		lmeta=message.Meta()
