@@ -1,20 +1,21 @@
-from single import SingleClass
-import json
-import message_pb2 as message
 import allocate
 import config
 from single import CallBack
+from single import SingleClass
 import logging
-import csv
+import json
+import message_pb2 as message
 
 
-
-class PWorkerClass(SingleClass):
-	def __init__(self,id,ip,port,role,client_id,servernum):
-		super(PWorkerClass, self).__init__(id,ip,port,role,client_id,servernum,self.process,self.handle_clock)
+class SSPWorkerClass(SingleClass):
+	def __init__(self,id,ip,port,role,client_id,servernum,staleness):
+		super(SSPWorkerClass, self).__init__(id,ip,port,role,client_id,servernum,self.process,self.handle_clock)
 		self.dict_callback={}         #<timestamp,callback>
 		self.dict_kv={}       #存放每个timestamp的数据信息
 		self.dict_arg={}     #每个dict_callback的参数
+		self.min_clock=0         #用于ssp的时间机制
+		self.staleness=staleness
+		self.dict_clock={}  #存放每个worker的clock
 
 	def process(self,msg): #处理从服务器中pull下来的数据
 		if msg.push==False:
@@ -44,7 +45,9 @@ class PWorkerClass(SingleClass):
 		del self.dict_callback[timestamp]     #从列表删除
 		self.mutex.release()
 
-	def push(self,key_list,val_list,callback):
+	def push(self,key_list,val_list,callback,stale):
+		#向schedule探寻消息
+		# if(stale>)
 		server_num=self.servernum
 		self.tracker.append([server_num,0])
 		ts=len(self.tracker)-1
@@ -91,6 +94,35 @@ class PWorkerClass(SingleClass):
 		return ts
 
 
+	def sendclock(self,clock,ts):
+		msg = message.Meta()
+		schedule_node = message.Node()
+		schedule_node.id = 1
+		schedule_node.ip = '127.0.0.1'
+		schedule_node.port = 8002
+		msg.control.command = 'ssp'
+		msg.control.reg_node.ip = self.node.ip
+		msg.control.reg_node.port = self.node.port
+		msg.control.reg_node.role = self.node.role
+		msg.timestamp =ts
+		msg.recv_id = schedule_node.id
+		msg.body=str(clock).encode()
+		self.zmqs.sendmsg(msg)
+	def pullwithclock(self,key_list,val_list,stale):
+
+		self.tracker.append([1, 0])
+		ts=len(self.tracker)-1
+		cb=CallBack(self.pull,key_list,val_list)
+		self.add_callback(ts,cb)
+		self.sendclock(stale,ts)
+
+
+
+	def handle_clock(self,msg):
+		if msg.body.decode()==True:
+			ts=msg.timestamp
+			self.run_callback(ts)
+
 
 	def sendkv(self,ts,push,kv_list):
 		slicer=allocate.getslicer(kv_list,allocate.get_serverkeyranges(self.servernum))  #根据serverrange查询每个server负责的key
@@ -125,64 +157,3 @@ class PWorkerClass(SingleClass):
 		while(self.tracker[timestamp][0]!=self.tracker[timestamp][1]):
 			pass
 			# print('wait')
-
-
-class PServerClass(SingleClass):
-	def __init__(self,id,ip,port,role,client_id,servernum,data):
-		super(PServerClass, self).__init__(id,ip,port,role,client_id,servernum,self.process,self.handle_clock)
-		self.data=data     #存放参数值<key,value>形式
-		# self.handle=handle
-	def sethandle(self,handle):
-		pass
-	def process(self,msg):
-		#本地复制下信息
-		lmeta=message.Meta()
-		lmeta.body=msg.body
-		lmeta.timestamp=msg.timestamp
-		lmeta.sender_id=msg.sender_id
-		lmeta.recv_id=msg.recv_id
-		lmeta.request=msg.request
-		lmeta.push=msg.push
-		self.response(lmeta)
-
-	def savetodisk(self,data):
-		with open(self.save_path,'w') as f:
-			f_csv=csv.DictWriter(f,'feature_id')
-			f_csv.writeheader()
-			f_csv.writerows(data)
-
-	def readfromdisk(self):
-		with open(self.save_path,'r') as f:
-			f_csv=csv.DictReader()
-
-	def response(self,request_msg):
-		lmeta=message.Meta()
-		lmeta.sender_id=request_msg.recv_id
-		lmeta.recv_id=request_msg.sender_id
-		lmeta.timestamp=request_msg.timestamp
-		lmeta.push=request_msg.push
-		lmeta.body=request_msg.body
-		lmeta.request=False
-		if lmeta.push==True:
-			kv_list=json.loads(lmeta.body.decode())
-			for i in range(len(kv_list[0])):
-				index=kv_list[0][i]
-				self.data[index]-=kv_list[1][i]
-
-
-		else:
-			re_vals=[]
-			re_keys=[]
-			re_kvlist=[]
-			kv_list = json.loads(lmeta.body.decode())
-			for i in range(len(kv_list[0])):
-				if int(kv_list[0][i]) not in self.data.keys():
-					logging.error('cannot find key in server')
-				re_keys.append(kv_list[0][i])
-				re_vals.append(self.data[int(kv_list[0][i])])
-			re_kvlist.append(re_keys)
-			re_kvlist.append(re_vals)
-			lmeta.body=json.dumps(re_kvlist).encode()
-		# print('recv_id：%d' %lmeta.recv_id)
-		self.send(lmeta) #根据request_msg中的节点id，查询节点相应的<ip,port>回复消息
-

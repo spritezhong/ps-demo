@@ -2,19 +2,18 @@
 # from worker import WorkerClass
 import threading
 import message_pb2 as message
-import socket
 import datetime
 import logging
 import logging.config
 import config
 from zmqsock import ZMQSOCK
+import json
 class ScheduleClass(object):
-	def __init__(self,workcount,is_schedule):
+	def __init__(self,workcount,is_schedule,staleness):
 		self.state=0                    #启动状态，初始0，表示先启动schedule节点
 		self.schedule_node=message.Node()
 		self.current_node=message.Node()
 		self.connect_ids={}    #<node.id，(ip,port>> #id和通信地址的映射 为了方便后续判断是否是恢复节点
-		# self.__workqueue=Queue.queue()          #装任务的集合
 		self.__workers={}                       #<string,thread>集合 每个worker为一个线程
 		self.workcount=workcount
 		self.is_schedule=is_schedule
@@ -23,6 +22,9 @@ class ScheduleClass(object):
 		self.share_node={}         #共享通信地址的worker
 		self.list_heart={}        #记录每个节点的上次活跃时间
 		self.heartbeat_timeout=60        #60s内没有动态的认为改节点已死亡
+		self.min_clock = 0  # 用于ssp的时间机制记录全局最小clock
+		self.staleness = staleness
+		self.dict_clock=0            #记录当前拥有最小clock的workid
 		self.nodes_list=message.NodeList()
 		self.zmqs = ZMQSOCK()
 		self.zmqs.start()
@@ -44,6 +46,7 @@ class ScheduleClass(object):
 			self.schedule_node.port=8002
 			self.schedule_node.role='schedule'
 			self.zmqs.bind(self.schedule_node)
+			self.zmqs.connect(self.schedule_node,self.schedule_node)
 			cmap={self.schedule_node.ip:self.schedule_node.port}
 			self.connect_ids[self.schedule_node.id]=cmap    #增加schedule节点信息
 			self.recieve_thread=threading.Thread(target=self.recieving)
@@ -53,6 +56,7 @@ class ScheduleClass(object):
 		self.list_heart[id]=t
 
 	def stop(self):
+
 		self.recieve_thread.join()
 
 	def getdeadnode(self,t):
@@ -128,20 +132,18 @@ class ScheduleClass(object):
 					self.add_registernode(reg_node)
 				else: #有节点重启
 					self.updatenodeinfo(deadnodes, reg_node)
+			elif buf.control.command=='ssp':
+				sender_id=buf.sender_id
+				ts=buf.timestamp
+				stale=json.loads(buf.body.decode())
+				self.process_clock(stale,sender_id,ts)
 			elif buf.control.command=='heart':
 				# print('recieve heart id:%s' %buf.control.reg_node.id)
 				self.update_heart(buf.control.reg_node.id, datetime.datetime.now())
+			elif buf.control.command=='exit':
+				self.zmqs.stop()
+				break
 
-
-	def send(self,msg):
-		sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-		nodeid=msg.recv_id
-		ip = list(self.connect_ids[nodeid].keys())[0]
-		port = self.connect_ids[nodeid][ip]
-		address = (ip, port)
-		sock.connect(address)
-		sock.send(msg.SerializePartialToString())
-		sock.close()
 
 	def sendtoall(self,msg):
 
@@ -158,6 +160,48 @@ class ScheduleClass(object):
 		desnode.role = srcnode.role
 
 
+	def stop(self):
+		lmeta=message.Meta()
+		lmeta.control.command='exit'
+		lmeta.recv_id=self.schedule_node.id
+		lmeta.sender_id=self.schedule_node.id
+		self.zmqs.sendmsg(lmeta)
+		self.recieve_thread.join()
+		# self.heart_thread.join()
 
+
+	def isuniquemin(self, stale):
+
+		count = 0
+		for key in self.dict_clock.keys():
+			if self.dict_clock[key] == stale:
+				count += 1
+		if count == 1:
+			return True
+		return False
+
+	def getre_clock(self, stale, workid): #锁是不是加的过长了
+
+		self.mutex.acquire()
+		if (self.dict_clock.size() == 0):
+			self.min_clock = stale
+			reflag=True
+		elif (stale > self.min_clock + self.staleness):
+			reflag=False
+		elif (stale == self.min_clock):
+			if (self.isuniquemin(stale)):
+				self.min_clock += 1
+			self.dict_clock[workid] = stale
+			reflag=True
+		self.mutex.acquire()
+		return reflag
+	def process_clock(self,stale,workid,ts):
+		msg=message.Meta()
+		msg.sender_id=self.schedule_node.id
+		msg.recv_id=workid
+		msg.body=self.getre_clock(stale,workid).encode()
+		msg.cmd='ssp'
+		msg.timestamp=ts
+		self.zmqs.sendmsg(msg)
 
 

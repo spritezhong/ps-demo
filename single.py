@@ -1,9 +1,11 @@
 #worker与server的基类
 import message_pb2 as message
-import socket
+import config
 import threading
 import time
+
 from zmqsock import ZMQSOCK
+from threading import Lock
 class CallBack:
     def __init__(self,fun,*arg):
         self.arg=arg
@@ -13,8 +15,10 @@ class CallBack:
     def run(self):
         self.fun(self.arg)
 class SingleClass(object):
-	def __init__(self,rank,ip,port,role,client_id,servernum,handle):
+	def __init__(self,rank,ip,port,role,client_id,servernum,handle,handle_clock):
 		#初始化自己节点信息,后续应该改为直接从配置文件读取
+		self.is_recover=config.is_recover
+		self.save_path=config.save_path
 		self.node=message.Node()
 		self.node.rank=rank
 		self.node.ip=ip
@@ -24,7 +28,9 @@ class SingleClass(object):
 		self.connect_ids={}
 		self.servernum=servernum
 		self.tracker=[]            #每个元素为[sendnum,recnum]
+		self.mutex = Lock()
 		self.handle=handle  #增加回调函数handle，对于worker来说，执行PWorker.process(),对于server来说执行PServer.process()
+		self.handle_clock=handle_clock #从服务端获取是否符合迭代窗口， 只有worker执行该函数，对于server来说为空
 		# self.ready=False
 		self.zmqs = ZMQSOCK()
 		self.zmqs.start()
@@ -75,16 +81,21 @@ class SingleClass(object):
 					self.zmqs.connect(node,self.node)
 				self.ready=True
 
-				# pass
-
 			elif buf.control.command=='exit':
 				self.ready=False
+				self.zmqs.stop()
 				break
+			elif buf.control.command=='ssp':
+				self.handle_clock(buf)
+
+
 			else:
 				self.handle(buf)            #处理接收到的消息
 				if buf.request==False:    # 记录当前时间戳有一个消息得到回复
 					ts=buf.timestamp
+					self.mutex.acquire()
 					self.tracker[ts][1]+=1
+					self.mutex.release()
 					# self.recnum[ts]+=1
 
 	def heartbeat(self,interval):           #每隔一段时间向schedule发送消息表示自己还活着
@@ -133,14 +144,18 @@ class SingleClass(object):
 	def stop(self):
 		lmeta=message.Meta()
 		lmeta.control.command='exit'
-		lmeta.recv_id=9
-		lmeta.sender_id=9
-		sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-		sock.connect((self.node.ip, self.node.port))
-		sock.send(lmeta.SerializePartialToString())
-		sock.close()
+		lmeta.recv_id=self.node.id
+		lmeta.sender_id=self.node.id
+		# sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+		# sock.connect((self.node.ip, self.node.port))
+		# self.send(lmeta.SerializePartialToString())
+		self.send(lmeta)
+		# sock.close()
+
 		self.recieve_thread.join()
 		self.heart_thread.join()
 
 
 
+	def handle_clock(self):
+		pass
