@@ -1,0 +1,25 @@
+import zmq
+import message_pb2 as mess
+context=zmq.Context()
+# socket=context.socket(zmq.REQ)
+socket=context.socket(zmq.DEALER)
+socket.setsockopt(zmq.IDENTITY, b'A')
+rc = socket.setsockopt(zmq.LINGER, 10)
+print(rc)
+# socket.connect("tcp://*:8002")
+socket.connect("tcp://127.0.0.1:8888")
+
+for request in range(0,10):
+	print("sending request",request)
+	# socket.send_multipart([b'A', str(request).encode()])
+	rc = socket.setsockopt(zmq.LINGER, 0)
+	print("linger",rc)
+	socket.send_string("request"+str(request))
+	rc = socket.setsockopt(zmq.LINGER, 0)
+	print("linger",rc)
+	message=socket.recv()
+	print(message)
+	msg=mess.Meta()
+	print(msg.ParseFromString(message))
+	print("received response",msg)
+print(socket.close())
