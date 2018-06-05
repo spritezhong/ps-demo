@@ -14,7 +14,9 @@ worker.waitready()
 server1.waitready()
 server2.waitready()
 key_list=[i for i in range(12)]
-worker.wait(worker.pull(key_list,[0]*12))
+b=[0]*12
+worker.wait(worker.pull(key_list,b))
+print('b',b)
 worker.stop()
 server1.stop()
 server2.stop()
