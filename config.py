@@ -1,4 +1,4 @@
-Max_Key=12 #一个server上最多能运行的key
+Max_Key=12 #一个server上最多能运行的key 配置文件
 
 
 def workranktoID(rank):
