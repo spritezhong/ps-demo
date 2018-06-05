@@ -11,7 +11,7 @@ def get_serverkeyranges(num_servers):
 
 	return server_range
 
-def getslicer(kv_list,range_list): #返回结果形式['flag',[key_list,val_list]]
+def getslicer(kv_list,range_list): #返回结果形式['flag',[key_list,val_list]]的
 	num=len(range_list)
 	pos=[0]*(num+1)
 	begin=0
