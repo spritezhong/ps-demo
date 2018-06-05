@@ -8,6 +8,7 @@ import logging.config
 import config
 from zmqsock import ZMQSOCK
 import json
+from threading import Lock
 class ScheduleClass(object):
 	def __init__(self,workcount,is_schedule,staleness):
 		self.state=0                    #启动状态，初始0，表示先启动schedule节点
@@ -24,7 +25,8 @@ class ScheduleClass(object):
 		self.heartbeat_timeout=60        #60s内没有动态的认为改节点已死亡
 		self.min_clock = 0  # 用于ssp的时间机制记录全局最小clock
 		self.staleness = staleness
-		self.dict_clock=0            #记录当前拥有最小clock的workid
+		self.mutex = Lock()
+		self.dict_clock={}            #记录当前拥有最小clock的workid
 		self.nodes_list=message.NodeList()
 		self.zmqs = ZMQSOCK()
 		self.zmqs.start()
@@ -133,18 +135,23 @@ class ScheduleClass(object):
 				else: #有节点重启
 					self.updatenodeinfo(deadnodes, reg_node)
 			elif buf.control.command=='ssp':
+				# print('schedule-ssp')
 				sender_id=buf.sender_id
+				# print('id',buf.sender_id)
 				ts=buf.timestamp
 				stale=json.loads(buf.body.decode())
 				self.process_clock(stale,sender_id,ts)
 			elif buf.control.command=='heart':
 				# print('recieve heart id:%s' %buf.control.reg_node.id)
 				self.update_heart(buf.control.reg_node.id, datetime.datetime.now())
+			elif buf.control.command=='service':
+				self.requestforval()
 			elif buf.control.command=='exit':
 				self.zmqs.stop()
 				break
 
-
+	def requestforval(self):
+		pass
 	def sendtoall(self,msg):
 
 		for key in self.connect_ids.keys():
@@ -169,39 +176,48 @@ class ScheduleClass(object):
 		self.recieve_thread.join()
 		# self.heart_thread.join()
 
-
+	def ismin(self,stale):
+		for key in self.dict_clock.keys():
+			if self.dict_clock[key]<stale:
+				return False
+		return True
 	def isuniquemin(self, stale):
-
+		# print('issssunuque')
 		count = 0
 		for key in self.dict_clock.keys():
 			if self.dict_clock[key] == stale:
 				count += 1
-		if count == 1:
+		if count == 0:
 			return True
 		return False
 
 	def getre_clock(self, stale, workid): #锁是不是加的过长了
-
+		# print('gre-clock',self.min_clock,self.staleness,stale)
+		reflag=True
 		self.mutex.acquire()
-		if (self.dict_clock.size() == 0):
-			self.min_clock = stale
-			reflag=True
-		elif (stale > self.min_clock + self.staleness):
+		self.dict_clock[workid]=stale
+		if len(self.dict_clock)==self.num_workers and self.ismin(stale):
+			# print('if')
+			if self.min_clock<stale:
+				self.min_clock=stale
+				reflag=True
+		elif stale>self.min_clock+self.staleness:
+			# print('elif')
 			reflag=False
-		elif (stale == self.min_clock):
-			if (self.isuniquemin(stale)):
-				self.min_clock += 1
-			self.dict_clock[workid] = stale
-			reflag=True
-		self.mutex.acquire()
+
+
+		self.mutex.release()
+		# print('reflag',reflag)
 		return reflag
 	def process_clock(self,stale,workid,ts):
+		# print('process')
 		msg=message.Meta()
 		msg.sender_id=self.schedule_node.id
 		msg.recv_id=workid
-		msg.body=self.getre_clock(stale,workid).encode()
-		msg.cmd='ssp'
+		msg.body=str(self.getre_clock(stale,workid)).encode()
+		msg.control.command='ssp'
 		msg.timestamp=ts
 		self.zmqs.sendmsg(msg)
+		# print('send-ssp')
 
 

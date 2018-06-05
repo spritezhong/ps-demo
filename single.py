@@ -86,7 +86,12 @@ class SingleClass(object):
 				self.zmqs.stop()
 				break
 			elif buf.control.command=='ssp':
+				print('single-ssp')
 				self.handle_clock(buf)
+				ts = buf.timestamp
+				self.mutex.acquire()
+				self.tracker[ts][1] += 1
+				self.mutex.release()
 
 
 			else:
@@ -158,4 +163,5 @@ class SingleClass(object):
 
 
 	def handle_clock(self):
+		print('single handle clock')
 		pass

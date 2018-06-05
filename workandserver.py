@@ -17,6 +17,7 @@ class PWorkerClass(SingleClass):
 		self.dict_arg={}     #每个dict_callback的参数
 
 	def process(self,msg): #处理从服务器中pull下来的数据
+		# print('process',json.loads(msg.body.decode()))
 		if msg.push==False:
 			ts=msg.timestamp
 			self.mutex.acquire()
@@ -26,7 +27,7 @@ class PWorkerClass(SingleClass):
 			self.mutex.release()
 			if self.tracker[ts][1]==self.servernum-1: #这里应该是等于服务器的数量-1因为当前回复的服务器未计算在内
 				self.run_callback(ts)     #全部返回，执行回调函数
-			self.printval()
+				self.printval()
 
 	def add_callback(self,timestamp,callback):
 		#这里需要互斥访问self.dict_callback，后期需要引入锁的机制
@@ -58,13 +59,16 @@ class PWorkerClass(SingleClass):
 	def update(self,*arg):
 		ts=arg[0][2]
 		results=self.dict_kv[ts]
+		print('results',results)
+		print('arg00',len(arg[0][0]),arg[0][0])
 		len_key=0
 		len_val=0
 		for i in range(len(results)):
 			len_key+=len(results[i][0])
 			len_val+=len(results[i][1])
+
 		if len(arg[0][0])!=len_key or len(arg[0][1])!=len_val:
-			logging.error('lost some server response')
+			logging.error('lost some server response',arg[0][0],len_key,arg[0][1],len_val)
 
 		sort_result=sorted(results)
 		val_list=[]
@@ -99,6 +103,7 @@ class PWorkerClass(SingleClass):
 		for i in range(len(slicer)):
 			if slicer[i][0]=='False':
 				skipnum=skipnum+1
+			print('skipnum',skipnum)
 			self.tracker[ts][1]+=skipnum
 		if skipnum==len(slicer):
 			self.run_callback(ts)
@@ -119,6 +124,7 @@ class PWorkerClass(SingleClass):
 
 	def printval(self):
 		print('check weight',self.dict_kv)
+		pass
 
 
 	def wait(self,timestamp):
@@ -126,14 +132,42 @@ class PWorkerClass(SingleClass):
 			pass
 			# print('wait')
 
+class server_handle:
+	def __init__(self,store):
+		self.store=store
+	def handle_request(self,msg,data,server):
+		# print('data',data)
+		# print('store',self.store)
+		re_kvlist = []
+		if msg.push==True:
+			kv_list=data
+			for i in range(len(kv_list[0])):
+				index=kv_list[0][i]
+				self.store[index]-=kv_list[1][i]
+		else:
+			re_vals=[]
+			re_keys=[]
+
+			kv_list=data
+			for i in range(len(kv_list[0])):
+				if int(kv_list[0][i]) not in self.store.keys():
+					logging.error('cannot find key in server')
+				re_keys.append(kv_list[0][i])
+				re_vals.append(self.store[int(kv_list[0][i])])
+			re_kvlist.append(re_keys)
+			re_kvlist.append(re_vals)
+		server.request_msg(msg,re_kvlist)
+
 
 class PServerClass(SingleClass):
-	def __init__(self,id,ip,port,role,client_id,servernum,data):
+	def __init__(self,id,ip,port,role,client_id,servernum):
 		super(PServerClass, self).__init__(id,ip,port,role,client_id,servernum,self.process,self.handle_clock)
-		self.data=data     #存放参数值<key,value>形式
-		# self.handle=handle
-	def sethandle(self,handle):
-		pass
+		# self.data=data     #存放参数值<key,value>形式
+		# self.requesthandle=self.response
+
+	def set_reuqesthandle(self,requesthandle):
+		self.requesthandle=requesthandle
+		# pass
 	def process(self,msg):
 		#本地复制下信息
 		lmeta=message.Meta()
@@ -143,7 +177,10 @@ class PServerClass(SingleClass):
 		lmeta.recv_id=msg.recv_id
 		lmeta.request=msg.request
 		lmeta.push=msg.push
-		self.response(lmeta)
+		self.requesthandle(lmeta,json.loads(lmeta.body.decode()),self)
+		# cb= CallBack(self.requesthandle,lmeta)
+		# cb.run()
+		# self.response(lmeta)
 
 	def savetodisk(self,data):
 		with open(self.save_path,'w') as f:
@@ -154,7 +191,16 @@ class PServerClass(SingleClass):
 	def readfromdisk(self):
 		with open(self.save_path,'r') as f:
 			f_csv=csv.DictReader()
-
+	def request_msg(self,request_msg,kvlist):
+		lmeta = message.Meta()
+		lmeta.sender_id = request_msg.recv_id
+		lmeta.recv_id = request_msg.sender_id
+		lmeta.timestamp = request_msg.timestamp
+		lmeta.push = request_msg.push
+		lmeta.body = json.dumps(kvlist).encode()
+		lmeta.request = False
+		self.send(lmeta)
+'''
 	def response(self,request_msg):
 		lmeta=message.Meta()
 		lmeta.sender_id=request_msg.recv_id
@@ -168,8 +214,6 @@ class PServerClass(SingleClass):
 			for i in range(len(kv_list[0])):
 				index=kv_list[0][i]
 				self.data[index]-=kv_list[1][i]
-
-
 		else:
 			re_vals=[]
 			re_keys=[]
@@ -185,4 +229,5 @@ class PServerClass(SingleClass):
 			lmeta.body=json.dumps(re_kvlist).encode()
 		# print('recv_id：%d' %lmeta.recv_id)
 		self.send(lmeta) #根据request_msg中的节点id，查询节点相应的<ip,port>回复消息
+'''
 
