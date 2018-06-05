@@ -1,3 +1,4 @@
+
 message Node {
         required int32 id=4;
         required int32 rank=6;
@@ -23,6 +24,7 @@ message Meta {
         optional int32 sender_id=5;
         optional int32 recv_id=6;
         optional bool request=7;
+        
         optional bool push=8;
 
 
