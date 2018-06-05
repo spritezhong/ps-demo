@@ -24,7 +24,7 @@ class ZMQSOCK:
 
 	'''
 	bind 绑定相应的端口
-	@param node 绑定节点node的ip+port
+	@param node 绑定节点node的ip和ort
 	'''
 	def bind(self,node):
 		self.receiver=self.context.socket(zmq.ROUTER)
