@@ -2,6 +2,7 @@ from schedule import ScheduleClass
 from workandserver import PWorkerClass
 from workandserver import PServerClass
 from workandserver import server_handle
+#多个server测试
 server_h1=server_handle({0:0.1,1:0.1,2:0.1,3:0.1,4:0.1,5:0.1})
 server_h2=server_handle({6:0.2,7:0.1,8:0.1,9:0.6,10:0.1,11:0.1})
 master=ScheduleClass(3,1,0)
