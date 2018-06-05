@@ -1,4 +1,4 @@
-# class LRserver:
+ # class LRserver:
 # 	def __init__(self,store):
 # 		self.store=store
 # 	def handle_request(self,msg,data,server):
@@ -8,7 +8,7 @@
 class server_handle:
 	def __init__(self,store):
 		self.store=store
-	def handle_request(self,msg,data,server):
+	def handle_request(self,msg,data,server):#
 		# print('data',data)
 		# print('store',self.store)
 		re_kvlist = []
