@@ -1,41 +1,25 @@
 from schedule import ScheduleClass
-from workandserver import PWorkerClass
+
 from workandserver import PServerClass
+from workandserver import server_handle
 
-
-
-key_list=[i for i in range(12)]
-worker.wait(worker.pull(key_list,[0]*12))
-worker.stop()
-server1.stop()
-server2.stop()
-master.stop()
+# from LRmodel import LRmodel
+from LRssp import LRsspmodel
 
 def main():
-	master = ScheduleClass(3, 1, 0)
+	master = ScheduleClass(3, 1, 3)
 	master.start(0)
-	server1 = PServerClass(0, '127.0.0.1', 8003, 'server', 0, 2, {0: 0.1, 1: 0.1, 2: 0.1, 3: 0.1, 4: 0.1, 5: 0.1})
+	server1 = PServerClass(0, '127.0.0.1', 8003, 'server', 0, 1)
+	server_h1 = server_handle({0: 0.1, 1: 0.1, 2: 0.1})
+	server1.set_reuqesthandle(server_h1.handle_request)
 	server1.register()
-	server2 = PServerClass(1, '127.0.0.1', 8004, 'server', 0, 2, {6: 0.2, 7: 0.1, 8: 0.1, 9: 0.6, 10: 0.1, 11: 0.1})
-	server2.register()
-	worker = PWorkerClass(2, '127.0.0.1', 8001, 'worker', 0, 2)
-	worker.register()
-	worker.waitready()
-	server1.waitready()
-	server2.waitready()
+	# lr=LRmodel(5)
+	lr1=LRsspmodel(50,0,'127.0.0.1', 8005, 'worker', 0, 1)
+	lr1.readdata('testSet.txt')
+	lr1.train()
+	lr1.stop()
+	server1.stop()
+	master.stop()
 
-    work.read_data('testSet.txt')
-    # serv.process() 后面需要更改开多个进程，一个进程运行服务器，另一个进程跑主程序
-	#
-    # print('sddddddd')
-    for i in range(10): #在运行这段程序之前要保证服务器已经开始运转
-        work.pull()
-        work.calc_gradient()
-        work.push()
-
-    work.pull()
-    work.predict()
-    print('test over!')
-    #
 
 if __name__ == '__main__':main()
